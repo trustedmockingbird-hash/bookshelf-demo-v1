@@ -1,0 +1,118 @@
+{
+  "storeConfig": {
+    "shelfRows": 3,
+    "slotsPerShelf": 5,
+    "stockDepth": 3,
+    "fixedShelves": [2]
+  },
+  "versions": {
+    "A": {
+      "name": "Version A (No Hints)",
+      "instruction": "Please buy 1 or 2 books for your household.",
+      "showShelfTalker": false,
+      "shelfTalkerText": "",
+      "shelfTalkerShelf": 2,
+      "shelfTalkerSlot": 2,
+      "highlightTargetTags": false,
+      "priceOverrides": {}
+    },
+    "B": {
+      "name": "Version B (Shelf Talker + Highlighted Tags)",
+      "instruction": "Please buy 1 or 2 books for your household.",
+      "showShelfTalker": true,
+      "shelfTalkerText": "NEW! Staff Pick • Save 20%",
+      "shelfTalkerShelf": 2,
+      "shelfTalkerSlot": 2,
+      "highlightTargetTags": true,
+      "priceOverrides": {
+        "BOOK-DEEP-WORK": 11.99
+      }
+    }
+  },
+  "products": [
+    {
+      "id": "BOOK-ATOMIC-01",
+      "brand": "Penguin Press",
+      "title": "Atomic Habits",
+      "subtitle": "Daily Systems Guide",
+      "size": "320 pages • Hardcover",
+      "price": 16.50,
+      "target": false,
+      "color": "#1e3a8a",
+      "shelf": 3,
+      "slot": 1,
+      "facings": 2,
+      "backInfo": "Contents: 1. The Surprising Power of Atomic Habits. 2. How Habits Shape Identity. Printed on 100% recycled paper."
+    },
+    {
+      "id": "BOOK-COSMOS-02",
+      "brand": "Random House",
+      "title": "Cosmos",
+      "subtitle": "Spacetime Odyssey",
+      "size": "396 pages • Paperback",
+      "price": 14.00,
+      "target": false,
+      "color": "#312e81",
+      "shelf": 3,
+      "slot": 3,
+      "facings": 2,
+      "backInfo": "Contents: The Shores of the Cosmic Ocean, Harmony of the Worlds, Blues for a Red Planet. ISBN 978-0345539434."
+    },
+    {
+      "id": "BOOK-DEEP-WORK",
+      "brand": "Grand Central",
+      "title": "Deep Work",
+      "subtitle": "Rules for Focused Success",
+      "size": "296 pages • Hardcover",
+      "price": 14.99,
+      "target": true,
+      "color": "#047857",
+      "shelf": 2,
+      "slot": 2,
+      "facings": 2,
+      "backInfo": "TARGET PRODUCT • Featured Selection. Part 1: The Idea. Part 2: The 4 Rules of Deep Work. Includes focus tracker."
+    },
+    {
+      "id": "BOOK-DESIGN-04",
+      "brand": "Basic Books",
+      "title": "Everyday Things",
+      "subtitle": "Psychology of Design",
+      "size": "368 pages • Paperback",
+      "price": 15.25,
+      "target": true,
+      "color": "#b45309",
+      "shelf": 2,
+      "slot": 4,
+      "facings": 2,
+      "backInfo": "TARGET PRODUCT • Revised & Expanded Edition. Covers human-centered design, affordances, signifiers, and feedback loops."
+    },
+    {
+      "id": "BOOK-CPP-PRIMER",
+      "brand": "Addison-Wesley",
+      "title": "C++ Primer",
+      "subtitle": "Modern Systems Coding",
+      "size": "976 pages • Reference",
+      "price": 24.99,
+      "target": false,
+      "color": "#991b1b",
+      "shelf": 1,
+      "slot": 1,
+      "facings": 2,
+      "backInfo": "Covers C++ fundamentals, pointers, memory management, STL containers, templates, and object-oriented design."
+    },
+    {
+      "id": "BOOK-DUNE-SCI",
+      "brand": "Ace Sci-Fi",
+      "title": "Dune Chronicles",
+      "subtitle": "Arrakis Collector Edition",
+      "size": "688 pages • Paperback",
+      "price": 12.99,
+      "target": false,
+      "color": "#7c2d12",
+      "shelf": 1,
+      "slot": 3,
+      "facings": 2,
+      "backInfo": "Winner of the Hugo and Nebula Awards. Includes appendices on the ecology and religion of Dune."
+    }
+  ]
+}
