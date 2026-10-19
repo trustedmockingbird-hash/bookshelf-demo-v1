@@ -1,7 +1,11 @@
-// Phase 5 Telemetry Service: Action Log, Viewing Record (10-30Hz), and User Summary
+// Phase 5 Telemetry Service + Admin Multi-Visit Storage
+
+const VISITS_STORAGE_KEY = 'store_sim_visits_v1';
 
 class TelemetryTracker {
   constructor() {
+    this.isPreview = false;
+    this.visitId = null;
     this.reset();
     this.setupVisibilityListener();
   }
@@ -14,13 +18,13 @@ class TelemetryTracker {
     this.startTime = null;
     this.actionLog = [];
     this.viewingSamples = [];
-    this.visibilityStats = {}; // Keyed by object ID -> { timeOnScreenMs, maxScreenRatio, hovered, hoverTimeMs }
+    this.visibilityStats = {};
     this.hoverStartTimes = {};
     this.firstHoveredProduct = null;
     this.firstPickedProduct = null;
     this.firstPickupTimeMs = null;
     this.inspectedProducts = new Set();
-    this.changesOfMind = 0; // Put-backs + cart removals
+    this.changesOfMind = 0;
     this.targetInteractionTimeMs = 0;
     this.inspectStartTime = null;
     this.inspectingTarget = false;
@@ -37,11 +41,15 @@ class TelemetryTracker {
     }
   }
 
-  startSession(version, shuffleSeed) {
+  startSession(version, shuffleSeed, isPreview = false) {
+    this.reset();
     this.version = version;
     this.shuffleSeed = shuffleSeed;
+    this.isPreview = isPreview;
+    this.visitId = `${this.userId}_${Date.now()}`;
     this.startTime = performance.now();
     this.logAction('start', 'store-entrance', 'NONE', false);
+    this.syncVisitToStorage('started', []);
   }
 
   getElapsedMs() {
@@ -53,7 +61,6 @@ class TelemetryTracker {
     if (!this.startTime && action !== 'error') return;
     const timeMs = this.getElapsedMs();
 
-    // Track summary metrics automatically
     if (action === 'hover_start') {
       this.hoverStartTimes[objectPosition] = performance.now();
       if (productId !== 'NONE' && !this.firstHoveredProduct) {
@@ -106,7 +113,6 @@ class TelemetryTracker {
     });
   }
 
-  // Called 10-20 times per second from the 3D render loop
   recordViewingSample(cameraPos, cameraRot, visibleObjects, dtMs, currentFps) {
     if (!this.startTime) return;
     if (currentFps > 0 && currentFps < 250) {
@@ -167,6 +173,51 @@ class TelemetryTracker {
     };
   }
 
+  // Save batch to localStorage ( skips saving if Admin is in Preview mode )
+  syncVisitToStorage(status = 'started', cart = []) {
+    if (this.isPreview || !this.visitId) return;
+    try {
+      const visits = this.getStoredVisits();
+      const record = {
+        visitId: this.visitId,
+        user: this.userId,
+        version: this.version,
+        shuffleSeed: this.shuffleSeed,
+        status,
+        isTest: false,
+        summary: this.buildSummary(cart),
+        actionLog: this.actionLog,
+        visibilityStats: this.visibilityStats
+      };
+      const idx = visits.findIndex((v) => v.visitId === this.visitId);
+      if (idx >= 0) {
+        visits[idx] = { ...visits[idx], ...record };
+      } else {
+        visits.push(record);
+      }
+      localStorage.setItem(VISITS_STORAGE_KEY, JSON.stringify(visits));
+    } catch (e) {
+      console.error('Storage sync warning:', e);
+    }
+  }
+
+  getStoredVisits() {
+    try {
+      const raw = localStorage.getItem(VISITS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  toggleTestVisit(visitId) {
+    const visits = this.getStoredVisits().map((v) =>
+      v.visitId === visitId ? { ...v, isTest: !v.isTest } : v
+    );
+    localStorage.setItem(VISITS_STORAGE_KEY, JSON.stringify(visits));
+    return visits;
+  }
+
   downloadActionLogCSV() {
     const headers = ['user', 'version', 'time_ms', 'action', 'object', 'product', 'target'];
     const rows = this.actionLog.map((r) =>
@@ -192,6 +243,33 @@ class TelemetryTracker {
       cameraSamples10Hz: this.viewingSamples
     };
     this.triggerDownload(JSON.stringify(payload, null, 2), `viewing_record_${this.userId}.json`, 'application/json');
+  }
+
+  // Admin Multi-User Export Functions (excludes visits marked as isTest)
+  downloadAllSummariesCSV() {
+    const valid = this.getStoredVisits().filter((v) => !v.isTest && v.summary);
+    if (valid.length === 0) return this.downloadSummaryCSV([]);
+    const headers = Object.keys(valid[0].summary);
+    const rows = valid.map((v) =>
+      headers.map((h) => `"${String(v.summary[h] ?? '').replace(/"/g, '""')}"`).join(',')
+    );
+    this.triggerDownload([headers.join(','), ...rows].join('\n'), 'all_users_summary.csv', 'text/csv');
+  }
+
+  downloadAllActionsCSV() {
+    const valid = this.getStoredVisits().filter((v) => !v.isTest);
+    const allActions = valid.flatMap((v) => v.actionLog || []);
+    if (allActions.length === 0) return this.downloadActionLogCSV();
+    const headers = ['user', 'version', 'time_ms', 'action', 'object', 'product', 'target'];
+    const rows = allActions.map((r) =>
+      headers.map((h) => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',')
+    );
+    this.triggerDownload([headers.join(','), ...rows].join('\n'), 'all_users_actions.csv', 'text/csv');
+  }
+
+  downloadAllViewingJSON() {
+    const valid = this.getStoredVisits().filter((v) => !v.isTest);
+    this.triggerDownload(JSON.stringify(valid, null, 2), 'all_users_viewing_records.json', 'application/json');
   }
 
   triggerDownload(content, filename, mimeType) {

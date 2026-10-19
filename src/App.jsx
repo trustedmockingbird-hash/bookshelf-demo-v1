@@ -1,15 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import layoutData from './data/shelf_layout.json';
+import defaultLayoutData from './data/shelf_layout.json';
 import StoreScene from './components/StoreScene.jsx';
 import InspectModal3D from './components/InspectModal3D.jsx';
 import CartUI from './components/cartUI.jsx';
+import AdminPanel from './components/AdminPanel.jsx';
 import { telemetry } from './utils/telemetry.jsx';
+
+const CONFIG_STORAGE_KEY = 'store_sim_config_v1';
 
 export default function App() {
   const params = new URLSearchParams(window.location.search);
   const initialVersion = params.get('version') === 'A' ? 'A' : 'B';
   const initialSeed = Number(params.get('seed')) || 1042;
 
+  const [storeData, setStoreData] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : defaultLayoutData;
+    } catch {
+      return defaultLayoutData;
+    }
+  });
+
+  const [showAdmin, setShowAdmin] = useState(params.get('admin') === 'true');
+  const [isPreviewMode, setIsPreviewMode] = useState(params.get('preview') === 'true');
   const [versionKey, setVersionKey] = useState(initialVersion);
   const [shuffleSeed, setShuffleSeed] = useState(initialSeed);
   const [tutorialDone, setTutorialDone] = useState(false);
@@ -18,7 +32,6 @@ export default function App() {
   const [isCheckedOut, setIsCheckedOut] = useState(false);
   const [screenTooSmall, setScreenTooSmall] = useState(window.innerWidth < 768);
 
-  // Camera target state: start at entrance (z = 2.4m), walk up to shelf (z = 1.35m)
   const cameraTarget = useRef({ x: 0, y: 1.15, z: 2.3, pitch: 0, yaw: 0 });
 
   useEffect(() => {
@@ -27,28 +40,40 @@ export default function App() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  const handleSaveStoreData = (newData) => {
+    setStoreData(newData);
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(newData));
+  };
+
+  const handleResetDefaultData = () => {
+    setStoreData(defaultLayoutData);
+    localStorage.removeItem(CONFIG_STORAGE_KEY);
+  };
+
   const handleStartShopping = () => {
     setTutorialDone(true);
-    // Smoothly walk the user from the aisle entrance up to the shelf
     cameraTarget.current = { x: 0, y: 1.1, z: 1.45, pitch: 0, yaw: 0 };
-    telemetry.startSession(versionKey, shuffleSeed);
+    telemetry.startSession(versionKey, shuffleSeed, isPreviewMode);
   };
 
   const handleAddToCart = (product, quantity) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item
-        );
-      }
-      return [...prev, { ...product, quantity }];
+      const next = existing
+        ? prev.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item))
+        : [...prev, { ...product, quantity }];
+      telemetry.syncVisitToStorage('shopping', next);
+      return next;
     });
     setInspectingProduct(null);
   };
 
   const handleRemoveFromCart = (productId) => {
-    setCart((prev) => prev.filter((item) => item.id !== productId));
+    setCart((prev) => {
+      const next = prev.filter((item) => item.id !== productId);
+      telemetry.syncVisitToStorage('shopping', next);
+      return next;
+    });
   };
 
   const handleMoveCamera = (dx, dy, dz) => {
@@ -64,29 +89,57 @@ export default function App() {
   const handleCheckoutComplete = () => {
     const summary = cart.map((i) => `${i.id}x${i.quantity}`).join(';') || 'EMPTY';
     telemetry.logAction('checkout', 'checkout-button', summary, cart.some((i) => i.target));
+    telemetry.syncVisitToStorage('finished', cart);
     setIsCheckedOut(true);
+
+    // Optional Questionnaire Redirect (Page 2 Step 9)
+    const redirectBase = storeData.storeConfig.redirectUrl;
+    if (redirectBase && !isPreviewMode) {
+      setTimeout(() => {
+        window.location.href = `${redirectBase}${encodeURIComponent(telemetry.userId)}`;
+      }, 3000);
+    }
   };
 
-  // Step 2 of User Journey: Device check for phone screens
+  if (showAdmin) {
+    return (
+      <AdminPanel
+        storeData={storeData}
+        onSaveStoreData={handleSaveStoreData}
+        onResetDefaultData={handleResetDefaultData}
+        onPreviewVersion={(ver) => {
+          setVersionKey(ver);
+          setIsPreviewMode(true);
+          setShowAdmin(false);
+          setTutorialDone(true);
+          telemetry.startSession(ver, shuffleSeed, true);
+        }}
+        onExitAdmin={() => setShowAdmin(false)}
+      />
+    );
+  }
+
+  if (storeData.storeConfig.dataCollectionOpen === false && !isPreviewMode) {
+    return (
+      <div style={centerScreenStyle}>
+        <div>
+          <h2>Study Data Collection Is Currently Closed</h2>
+          <p style={{ color: '#94a3b8' }}>Thank you for your interest. This study is no longer accepting new visits.</p>
+          <button onClick={() => setShowAdmin(true)} style={adminFloatingBtn}>
+            Open Admin Control Panel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (screenTooSmall) {
     return (
-      <div
-        style={{
-          height: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#0f172a',
-          color: '#f8fafc',
-          fontFamily: 'system-ui, sans-serif',
-          padding: '24px',
-          textAlign: 'center'
-        }}
-      >
+      <div style={centerScreenStyle}>
         <div>
           <h2>Please Use a Laptop or Desktop Computer</h2>
           <p style={{ color: '#94a3b8', maxWidth: '400px' }}>
-            This 3D store simulator requires a larger screen (at least 1280 × 720 recommended). Please reopen this link on a computer.
+            This 3D store simulator requires a larger screen (at least 1280 × 720 recommended).
           </p>
         </div>
       </div>
@@ -95,8 +148,40 @@ export default function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative' }}>
+      {/* Top-Center Floating Admin & Preview Banner */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '14px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 25,
+          display: 'flex',
+          gap: '10px',
+          alignItems: 'center'
+        }}
+      >
+        {isPreviewMode && (
+          <span
+            style={{
+              background: '#f59e0b',
+              color: '#0f172a',
+              fontWeight: 'bold',
+              fontSize: '12px',
+              padding: '6px 12px',
+              borderRadius: '6px'
+            }}
+          >
+            PREVIEW MODE (No Data Saved)
+          </span>
+        )}
+        <button onClick={() => setShowAdmin(true)} style={adminFloatingBtn}>
+          ⚙ Admin Control Panel
+        </button>
+      </div>
+
       <StoreScene
-        layoutData={layoutData}
+        layoutData={storeData}
         versionKey={versionKey}
         shuffleSeed={shuffleSeed}
         cameraTarget={cameraTarget}
@@ -104,7 +189,6 @@ export default function App() {
         onInspect={(prod) => setInspectingProduct(prod)}
       />
 
-      {/* Step 3 of User Journey: Short Tutorial before shopping starts */}
       {!tutorialDone && (
         <div
           style={{
@@ -158,7 +242,7 @@ export default function App() {
 
       {tutorialDone && (
         <CartUI
-          instruction={layoutData.versions[versionKey].instruction}
+          instruction={storeData.versions[versionKey].instruction}
           versionKey={versionKey}
           onVersionChange={(v) => {
             setVersionKey(v);
@@ -185,3 +269,27 @@ export default function App() {
     </div>
   );
 }
+
+const centerScreenStyle = {
+  height: '100vh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#0f172a',
+  color: '#f8fafc',
+  fontFamily: 'system-ui, sans-serif',
+  padding: '24px',
+  textAlign: 'center'
+};
+
+const adminFloatingBtn = {
+  background: '#1e293b',
+  color: '#38bdf8',
+  border: '1px solid #38bdf8',
+  borderRadius: '8px',
+  padding: '6px 14px',
+  fontSize: '13px',
+  fontWeight: 'bold',
+  cursor: 'pointer',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+};
